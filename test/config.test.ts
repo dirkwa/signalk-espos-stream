@@ -118,7 +118,7 @@ describe("buildContainerConfig", () => {
     const config = buildContainerConfig(defaultSettings(), "0.1.0", PROFILE);
     expect(config.volumes).toEqual({
       "/profile": { source: PROFILE.source, ifMissing: "create" },
-      "/dev/shm": { source: "/dev/shm", ifMissing: "abort" },
+      "/dev/shm": { source: "/dev/shm", ifMissing: "create" },
     });
     expect(config.image).toBe(IMAGE);
   });

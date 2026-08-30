@@ -288,8 +288,12 @@ export function buildContainerConfig(
       // Host /dev/shm (4 GB tmpfs on a stock Pi) instead of podman's 64 MB
       // default: signalk-container cannot express --shm-size, and Chromium
       // without real shared memory either crashes tabs or falls back to
-      // SD-card-backed /tmp.
-      "/dev/shm": { source: "/dev/shm", ifMissing: "abort" },
+      // SD-card-backed /tmp. NOT ifMissing "abort": when Signal K itself is
+      // containerized the manager cannot verify host paths outside its own
+      // mounts and "abort" hard-fails, while "create" passes the volume
+      // through unverified for the runtime to resolve (and /dev/shm always
+      // exists on the real host).
+      "/dev/shm": { source: "/dev/shm", ifMissing: "create" },
     },
     restart: adv.restartPolicy,
     resources: {
