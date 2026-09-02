@@ -12,7 +12,7 @@ import {
 
 const PROFILE: ProfileMount = {
   source:
-    "/home/user/.signalk/plugin-config-data/signalk-espos-stream/chromium-profile",
+    "/srv/signalk/plugin-config-data/signalk-espos-stream/chromium-profile",
   containerPath: "/profile",
 };
 
