@@ -10,7 +10,7 @@ reviews:
     it did. Skip filler like "This PR" — go straight to the change.
 
   path_instructions:
-    - path: '**/*'
+    - path: "**/*"
       instructions: |
         ## Scope
 
