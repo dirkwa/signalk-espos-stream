@@ -67,6 +67,15 @@ function describeStatus(
   if (loading) return { state: "warn", meta: "Checking...", title: st };
   if (st === "ready") {
     const payload = report.lastHealth?.payload ?? null;
+    // A dead capture chain outranks client state: without it "waiting for
+    // the panel" would show an OK card while nothing can stream.
+    if (payload !== null && !payload.chainAlive) {
+      return {
+        state: "warn",
+        title: st,
+        meta: "Capture chain died — the container restarts it automatically",
+      };
+    }
     if (payload !== null && payload.client !== null) {
       return {
         state: "ok",

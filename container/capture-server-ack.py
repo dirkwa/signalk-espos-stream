@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import socket
 import struct
 import subprocess
@@ -361,6 +362,12 @@ def main():
         ap.error("--quality must be 2..31 (ffmpeg -q:v, lower is better)")
     if not 64 <= args.width <= 4096 or not 64 <= args.height <= 4096:
         ap.error("--width/--height must be 64..4096")
+
+    # This process is container PID 1: a stop delivers SIGTERM, whose
+    # default action skips the finally-teardown below and leaves Xvfb,
+    # Chromium and ffmpeg to be SIGKILLed at the runtime's grace timeout.
+    # Raise SystemExit instead so the reverse-order teardown always runs.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
     children = []
     try:

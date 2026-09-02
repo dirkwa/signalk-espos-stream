@@ -12,7 +12,7 @@ Xvfb/Chromium/ffmpeg chain and systemd unit with a container managed through
 
 ## How it works
 
-```
+```text
 ┌────────────────────────────── sk-espos-stream container ─────────────┐
 │ Xvfb :99 ── Chromium kiosk (capture URL) ── ffmpeg x11grab (MJPEG)   │
 │      ▲                                             │                 │
@@ -29,9 +29,11 @@ Xvfb/Chromium/ffmpeg chain and systemd unit with a container managed through
   1-byte ACK after each frame reaches its renderer, and the server responds
   with only the _newest_ frame — at most one frame in flight, so the panel
   paces its own frame rate and the ESP32's WiFi link is never flooded.
-- **Touch (UDP)**: 8-byte packets, little-endian `u16 x, u16 y, u8 type`
-  (0 down / 1 move / 2 up), injected into the kiosk via XTEST. Only packets
-  from the connected stream client's IP are accepted.
+- **Touch (UDP)**: 8-byte packets; the first 5 bytes are significant —
+  little-endian `u16 x, u16 y, u8 type` (0 down / 1 move / 2 up) — and
+  bytes 5–7 are reserved padding the server ignores. Injected into the
+  kiosk via XTEST; only packets from the connected stream client's IP are
+  accepted.
 - **Host networking**: the container shares the host network namespace, so
   the default capture URL `http://localhost:80/...` reaches Signal K
   directly and the stream/touch ports bind on the host as-is.
