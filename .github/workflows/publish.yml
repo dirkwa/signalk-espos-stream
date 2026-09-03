@@ -16,6 +16,8 @@ concurrency:
 
 jobs:
   verify:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -85,9 +87,20 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           image="ghcr.io/dirkwa/signalk-espos-stream"
-          docker build -t "$image:$version" -t "$image:latest" container/
+          docker build -t "$image:$version" container/
           docker push "$image:$version"
-          docker push "$image:latest"
+          # `latest` tracks stable releases only — a beta pushed as latest
+          # would reach container users who never opted into the npm
+          # prerelease channel.
+          case "$GITHUB_REF_NAME" in
+            *alpha* | *beta* | *rc*)
+              echo "prerelease tag — not updating latest"
+              ;;
+            *)
+              docker tag "$image:$version" "$image:latest"
+              docker push "$image:latest"
+              ;;
+          esac
 
   publish:
     # npm publishes LAST: once the package is on the registry, every
