@@ -1,0 +1,145 @@
+language: en-US
+
+reviews:
+  profile: assertive
+  auto_review:
+    enabled: true
+    drafts: false
+  high_level_summary_instructions: |
+    Write summaries in present tense. Describe what the code does, not what
+    it did. Skip filler like "This PR" — go straight to the change.
+
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        ## Scope
+
+        Focus on files changed since `master`. Think about how changes
+        interact with the rest of the codebase, not just the diff in
+        isolation.
+
+        signalk-espos-stream is a Signal K plugin that runs the display
+        capture chain (Xvfb + Chromium kiosk + ffmpeg + an ACK-paced
+        MJPEG/touch server) as a container managed through signalk-container
+        via signalk-container-helper, serving the espos-p4-cockpit `stream`
+        widget. Two halves live here: the TypeScript plugin (`src/`) and the
+        container image (`container/`). AGENTS.md is authoritative for the
+        architecture rules; the ones below are the review-relevant subset.
+
+        ## Load-bearing invariants
+
+        - **signalk-container is a runtime peer, never a dependency.** It is
+          declared via `"signalk": { "requires": [...] }` and reached through
+          `globalThis.__signalk_containerManager` (wrapped by the helper).
+          Flag any compile-time import of it.
+        - **Host networking**: the container config uses
+          `networkMode: "host"`. Flag any addition of `ports` or
+          `signalkAccessiblePorts` — the manager treats them as mutually
+          exclusive with networkMode. This is also why readiness is a manual
+          `waitForHttpReady` against the loopback health port, not the
+          helper's `readiness` option.
+        - **Never health-probe the stream TCP port.** The capture server
+          accepts one client at a time; a probe connection would be served
+          as the panel and lock it out for a full ACK-timeout window. The
+          loopback `/health` endpoint is the only health signal.
+        - **`buildContainerConfig` must stay pure and stable.** The
+          `command` array is always fully present; conditionally omitted
+          fields read as drift on every `ensureRunning` and cause recreate
+          loops.
+        - **`/dev/shm` is a host bind with `ifMissing: "create"`** because
+          signalk-container cannot express `--shm-size`, and "abort"
+          hard-fails under containerized Signal K (the manager cannot verify
+          host paths outside its own mounts).
+        - `plugin.start()` must never throw — async work runs under the
+          helper's `startSafely`. `plugin.stop()` is async and awaited.
+        - On update apply, the REQUESTED tag (e.g. "auto") is persisted,
+          never the resolved version. `imageTag: "auto"` resolves to the
+          plugin's own package.json version; the release workflow publishes
+          the ghcr image in lockstep and npm only after the image push.
+
+        ## ESM / TypeScript strict / Node 22+
+
+        - `"type": "module"` — relative imports in `src/` use the `.js`
+          suffix (NodeNext resolution). Reviews should not suggest dropping
+          the suffix. The exception is `src/configpanel/` (bundler-resolved
+          TSX, extensionless imports, compiled by babel via webpack and
+          typechecked by `tsconfig.panel.json`).
+        - tsconfig is strict with `noUncheckedIndexedAccess`. Avoid `any`;
+          prefer `unknown` + narrowing at boundaries. TypeBox 1.x (package
+          `typebox`, not `@sinclair/typebox`) defines the settings schema,
+          and `schema()` returns it directly as JSON schema.
+        - The config panel is a webpack Module Federation **ESM** remote
+          (`experiments.outputModule`, `library: { type: "module" }`) — a
+          classic `var` remote breaks in the Admin UI. Don't suggest
+          changing the webpack output shape.
+
+        ## The capture server (container/capture-server-ack.py)
+
+        - Single file, Python stdlib + python3-xlib only — flag any new
+          third-party import.
+        - Protocol invariants: `[u32 BE length][baseline JPEG]` with a
+          1-byte ACK per displayed frame and latest-frame-wins pacing (at
+          most one frame in flight); touch packets are accepted only from
+          the connected stream client's IP, because XTEST hands control of
+          the kiosk to whoever can reach the UDP port.
+        - The process is container PID 1: every exit path (including
+          SIGTERM) must run the reverse-order child teardown, and a dead
+          capture chain exits non-zero so the restart policy relaunches the
+          stack.
+        - Wire-format changes are only valid in lockstep with the
+          espos-p4-cockpit firmware — flag protocol edits that don't say how
+          the panel side keeps working.
+
+        ## Licensing
+
+        The project is source-available (LICENSE.md is authoritative); never
+        propose relicensing. Runtime and bundled dependency licenses gate
+        additions: `dependencies` and anything webpack bundles into
+        `public/` ship to users; devDependencies do not.
+
+        ## Echo comments
+
+        Flag any comment that merely restates what the code already says.
+        Replace with comments explaining *why*, not *what*. Or delete.
+
+        ## Documentation drift risk
+
+        Flag any `.md` file that contains implementation status, progress
+        markers, or "currently implemented as X" wording, or code snippets
+        likely to fall out of sync. Architecture decisions and conceptual
+        design rationale are fine.
+
+        ## Leftover crumbs from intermediate commits
+
+        Flag references in the current diff to symbols, files, or
+        approaches that no longer exist on this branch — old function names
+        in comments, dangling imports, stale TODOs from a superseded
+        approach, etc.
+
+        ## Commit / PR conventions
+
+        - Commit messages: conventional commits format (`feat:`, `fix:`,
+          `chore:`, `refactor:`, `docs:`, `test:`, `build:`, `ci:`,
+          `perf:`). Imperative mood, ≤72 char subject.
+        - PR title becomes the squash commit subject — must be a meaningful
+          one-liner.
+        - **No AI attribution** in commits, PR bodies, or code. Don't
+          mention Claude, AI, or add `Co-Authored-By` trailers.
+        - **No version bumps** in feature/fix PRs. Versions are bumped in
+          dedicated release PRs only when the user explicitly asks.
+
+        ## What NOT to flag
+
+        These are intentional:
+        - The image running as root: under rootless podman container-root
+          maps to the invoking host user, which the bind-mounted Chromium
+          profile needs; Chromium runs `--no-sandbox` regardless.
+        - `--no-sandbox` on Chromium — required for kiosk-in-container; the
+          container is the sandbox boundary.
+        - The single-client `listen(1)` stream server — single-panel by
+          design.
+        - `python3 -u` plus `flush=True` prints — belt and braces for
+          container log visibility.
+        - The duplicated defaults in `src/configpanel/store.ts` — the panel
+          bundle cannot import the Node-only server code, and the mirror is
+          documented.
