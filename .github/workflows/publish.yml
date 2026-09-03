@@ -1,0 +1,139 @@
+name: Release
+
+# One dependency graph for the whole release: the tag version must equal
+# package.json's version (imageTag "auto" resolves to it at runtime), the
+# container image must be pushed before the npm package publishes, and a
+# failure anywhere stops the chain — so an installed plugin can never
+# resolve "auto" to an image tag that was not published.
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag must match package.json version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${pkg_version}"
+            exit 1
+          fi
+          echo "releasing ${pkg_version}"
+
+  release:
+    needs: verify
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          awk -v ver="# ${GITHUB_REF_NAME}" '
+            $0 == ver { found = 1; next }
+            found && /^# v/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::No CHANGELOG.md section found for heading '# ${GITHUB_REF_NAME}'"
+            exit 1
+          fi
+          echo "----- release notes for ${GITHUB_REF_NAME} -----"
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  image:
+    needs: verify
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          image="ghcr.io/dirkwa/signalk-espos-stream"
+          docker build -t "$image:$version" container/
+          docker push "$image:$version"
+          # `latest` tracks stable releases only — a beta pushed as latest
+          # would reach container users who never opted into the npm
+          # prerelease channel.
+          case "$GITHUB_REF_NAME" in
+            *alpha* | *beta* | *rc*)
+              echo "prerelease tag — not updating latest"
+              ;;
+            *)
+              docker tag "$image:$version" "$image:latest"
+              docker push "$image:latest"
+              ;;
+          esac
+
+  publish:
+    # npm publishes LAST: once the package is on the registry, every
+    # install can resolve imageTag "auto" to an image that already exists.
+    needs: [release, image]
+    permissions:
+      id-token: write # OIDC trusted publishing
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          registry-url: "https://registry.npmjs.org"
+
+      # OIDC trusted publishing needs npm >= 11.5; npm 12 breaks
+      # --provenance ("Cannot find module 'sigstore'"). Pin 11.
+      - run: npm install -g npm@^11
+
+      - run: npm ci
+
+      - name: Publish to npm
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          if [[ "$tag" == *alpha* ]]; then
+            npm publish --provenance --access public --tag alpha
+          elif [[ "$tag" == *beta* ]]; then
+            npm publish --provenance --access public --tag beta
+          elif [[ "$tag" == *rc* ]]; then
+            npm publish --provenance --access public --tag rc
+          else
+            npm publish --provenance --access public
+          fi

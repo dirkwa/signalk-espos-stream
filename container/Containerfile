@@ -1,0 +1,36 @@
+# Capture-chain image for signalk-espos-stream: Xvfb + Chromium kiosk +
+# ffmpeg + the ACK-paced MJPEG/touch server. Built for linux/arm64 (Pi 5
+# boat servers); trixie matches the Chromium/ffmpeg generation the chain
+# was tuned on.
+#
+# Runs as root ON PURPOSE: under rootless podman container-root maps to the
+# invoking host user, which is exactly what the bind-mounted chromium
+# profile needs to stay writable. Chromium runs --no-sandbox anyway.
+#
+# /dev/shm: signalk-container cannot express --shm-size, so the plugin bind
+# mounts the host's /dev/shm (see buildContainerConfig); the image itself
+# needs nothing special for it.
+FROM debian:trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        chromium \
+        ffmpeg \
+        xvfb \
+        python3 \
+        python3-xlib \
+        ca-certificates \
+        fonts-dejavu-core \
+        fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/*
+
+# Chromium's crashpad writes under $HOME/.config/chromium regardless of
+# --user-data-dir; keep HOME real and writable.
+ENV HOME=/root
+
+WORKDIR /app
+COPY capture-server-ack.py /app/
+
+# Arguments come from the plugin's ContainerConfig `command` (appended to
+# the entrypoint). -u belts-and-braces the already flush=True prints.
+ENTRYPOINT ["python3", "-u", "/app/capture-server-ack.py"]
