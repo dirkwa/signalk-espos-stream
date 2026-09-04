@@ -74,19 +74,25 @@ reads at launch and uses for both REST and its stream connection — the
 login dialog never appears (this is FSK's supported kiosk path; the Login
 menu item is hidden when a URL token is present).
 
-Generate a long-lived token with the server's bundled tool, signed against
-your `security.json`:
+Click **Generate (1 year)** next to the Access token field in the plugin's
+config panel: it mints a token for your logged-in user through the
+server's own security strategy (the same signing path as
+`signalk-generate-token`) and fills the field — then Save. The admin-only
+`POST /plugins/signalk-espos-stream/api/kiosk-token` route behind the
+button also accepts `{"user": "...", "expiration": "90d"}` if you prefer a
+dedicated read-mostly kiosk user or a shorter life.
+
+Alternatively, mint one by hand with the server's bundled tool:
 
 ```bash
 signalk-generate-token -u <user> -e 1y -s ~/.signalk/security.json
 ```
 
-(For a containerized server, run it inside the container so the path
-resolves.) Paste the output into the plugin's Access token field. The token
-inherits the named user's permissions — consider a dedicated user if you
-want the kiosk to be read-mostly. It also appears in the container's
-command line locally (`podman inspect`), so treat host access as
-equivalent to holding the token.
+The token inherits the named user's permissions, and it appears in the
+container's command line locally (`podman inspect`), so treat host access
+as equivalent to holding the token. Device access tokens can't be reused
+here: the server stores only device metadata, never the token itself —
+that lives on the device.
 
 The Chromium profile persists in the plugin's data directory
 (`.../plugin-config-data/signalk-espos-stream/chromium-profile`), so a

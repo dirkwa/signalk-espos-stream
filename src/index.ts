@@ -132,6 +132,62 @@ export default function createPlugin(app: ServerAPI): Plugin {
         },
       });
 
+      // POST /plugins/signalk-espos-stream/api/kiosk-token — one-click mint
+      // for the authToken setting, via the server's own
+      // securityStrategy.generateToken (the API behind
+      // signalk-generate-token). Stays on the DEFAULT router: minting a
+      // login token is admin-only by nature. Deliberately NOT guarded by
+      // the running flag — the operator sets up the token while the plugin
+      // may still be disabled, like /api/versions.
+      pluginRouter.post("/api/kiosk-token", (req, res) => {
+        const strategy = (
+          app as unknown as {
+            securityStrategy?: {
+              generateToken?: (
+                req: unknown,
+                res: unknown,
+                next: () => void,
+                id: string,
+                expiration: string,
+              ) => void;
+            };
+          }
+        ).securityStrategy;
+        if (typeof strategy?.generateToken !== "function") {
+          res.status(400).json({
+            error:
+              "security is not enabled on this server — the kiosk needs " +
+              "no token; leave the field empty",
+          });
+          return;
+        }
+        const r = req as {
+          skPrincipal?: { identifier?: string };
+          body?: unknown;
+        };
+        const body =
+          typeof r.body === "object" && r.body !== null
+            ? (r.body as Record<string, unknown>)
+            : {};
+        // Mint for the admin who clicked, unless a user is named explicitly
+        // (e.g. a dedicated read-mostly kiosk user).
+        const user =
+          typeof body.user === "string" && body.user.trim() !== ""
+            ? body.user.trim()
+            : (r.skPrincipal?.identifier ?? "");
+        if (user === "") {
+          res.status(400).json({ error: "no user to mint the token for" });
+          return;
+        }
+        const expiration =
+          typeof body.expiration === "string" &&
+          /^[0-9]+[smhdwy]$/.test(body.expiration)
+            ? body.expiration
+            : "1y";
+        // generateToken writes the text/plain response itself.
+        strategy.generateToken(req, res, () => {}, user, expiration);
+      });
+
       // Readonly routes — any authenticated user when the server supports
       // route permissions, admin-only otherwise.
       const readonlyRouter =

@@ -10,7 +10,7 @@
  * Admin UI's shared singleton.
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   panelStyles as S,
   SectionTitle,
@@ -129,6 +129,45 @@ export default function PluginConfigurationPanel({
   const view = describeStatus(loading, status ?? { status: "not_running" });
   const st = typeof status?.status === "string" ? status.status : "not_running";
 
+  const [minting, setMinting] = useState(false);
+  const [tokenNote, setTokenNote] = useState("");
+  const mintToken = async () => {
+    setMinting(true);
+    setTokenNote("");
+    try {
+      const res = await fetch(`${BASE}/api/kiosk-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expiration: "1y" }),
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        let message = text;
+        try {
+          const parsed: unknown = JSON.parse(text);
+          if (
+            typeof parsed === "object" &&
+            parsed !== null &&
+            "error" in parsed &&
+            typeof (parsed as { error: unknown }).error === "string"
+          ) {
+            message = (parsed as { error: string }).error;
+          }
+        } catch {
+          // plain-text error stays as-is
+        }
+        setTokenNote(message);
+        return;
+      }
+      form.patch({ authToken: text.trim() });
+      setTokenNote("Token minted for your user (1 year) — Save to apply.");
+    } catch (err) {
+      setTokenNote(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMinting(false);
+    }
+  };
+
   const doSave = () => {
     save({
       captureUrl: form.captureUrl.trim() || DEFAULTS.captureUrl,
@@ -189,15 +228,23 @@ export default function PluginConfigurationPanel({
       />
       <FieldRow
         label="Access token"
-        hint="appended as ?token= — Freeboard-SK logs in with it and never shows the login dialog"
+        hint={
+          tokenNote ||
+          "appended as ?token= — Freeboard-SK logs in with it and never shows the login dialog"
+        }
       >
         <input
-          style={{ ...S.input, width: "100%" }}
+          style={{ ...S.input, width: 280 }}
           type="password"
           value={form.authToken}
           onChange={(e) => form.patch({ authToken: e.target.value })}
           placeholder="empty = no kiosk login"
         />
+        <span style={{ marginLeft: 8 }}>
+          <Button small busy={minting} busyLabel="Minting…" onClick={mintToken}>
+            Generate (1 year)
+          </Button>
+        </span>
       </FieldRow>
       <FieldRow label="Geometry" hint="match the panel's display resolution">
         <input
