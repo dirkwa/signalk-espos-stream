@@ -83,7 +83,7 @@ describe("kioskUrl", () => {
     );
   });
 
-  it("feeds the tokened URL into the container command", () => {
+  it("feeds the tokened URL and cookie bootstrap into the command", () => {
     const settings = defaultSettings();
     settings.authToken = "tok";
     const command =
@@ -91,6 +91,13 @@ describe("kioskUrl", () => {
     expect(command[command.indexOf("--url") + 1]).toBe(
       `${settings.captureUrl}?token=tok`,
     );
+    expect(command[command.indexOf("--auth-token") + 1]).toBe("tok");
+  });
+
+  it("omits --auth-token without a token", () => {
+    const command =
+      buildContainerConfig(defaultSettings(), "0.1.0", PROFILE).command ?? [];
+    expect(command).not.toContain("--auth-token");
   });
 });
 

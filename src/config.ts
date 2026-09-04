@@ -299,6 +299,13 @@ export function buildContainerConfig(
     "--wait-url",
     "--touch",
     settings.touch ? "on" : "off",
+    // The URL token covers the web app's own API calls, but plain tile
+    // <img> loads authenticate by cookie only — the capture server plants
+    // the server auth cookie via its bootstrap page (charts stay black on
+    // a secured server otherwise).
+    ...(settings.authToken.trim() !== ""
+      ? ["--auth-token", settings.authToken.trim()]
+      : []),
     ...(adv.disableDevShm ? ["--disable-dev-shm"] : []),
   ];
   return {

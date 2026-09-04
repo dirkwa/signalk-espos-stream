@@ -123,9 +123,33 @@ class Stats:
 
 stats = Stats()
 
+# Set by main() when --auth-token is given: the kiosk Chromium starts on
+# /bootstrap, which plants the Signal K auth cookie for host "localhost"
+# (cookies are port-agnostic) before redirecting to the capture URL. The
+# app frameworks attach a URL token to their own API calls, but plain tile
+# <img> loads carry only cookies — without this, charts render black on a
+# secured server.
+bootstrap_token = None
+bootstrap_target = None
+
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/bootstrap" and bootstrap_token and bootstrap_target:
+            body = (
+                "<!doctype html><script>\n"
+                "document.cookie = 'JAUTHENTICATION=' + %s +\n"
+                "  '; path=/; max-age=31536000; SameSite=Strict';\n"
+                "location.replace(%s);\n"
+                "</script>" % (json.dumps(bootstrap_token),
+                               json.dumps(bootstrap_target))
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path != "/health":
             self.send_response(404)
             self.end_headers()
@@ -363,6 +387,10 @@ def main():
     ap.add_argument("--wait-url", action="store_true",
                     help="wait for --url to answer before starting Chromium")
     ap.add_argument("--touch", choices=["on", "off"], default="on")
+    ap.add_argument("--auth-token", default="",
+                    help="Signal K access token; planted as the server auth "
+                         "cookie via a bootstrap page so tile/image requests "
+                         "authenticate too")
     ap.add_argument("--disable-dev-shm", action="store_true",
                     help="Chromium --disable-dev-shm-usage (shm goes to /tmp)")
     args = ap.parse_args()
@@ -390,8 +418,15 @@ def main():
         print(f"Xvfb {args.display} {args.width}x{args.height}", flush=True)
         children.append(start_xvfb(args.display, args.width, args.height))
         time.sleep(1)
+        start_url = args.url
+        if args.auth_token:
+            global bootstrap_token, bootstrap_target
+            bootstrap_token = args.auth_token
+            bootstrap_target = args.url
+            start_url = f"http://127.0.0.1:{args.health_port}/bootstrap"
+            print("auth cookie bootstrap enabled", flush=True)
         print(f"chromium kiosk -> {args.url}", flush=True)
-        children.append(start_chromium(args.display, args.url,
+        children.append(start_chromium(args.display, start_url,
                                        args.width, args.height,
                                        args.profile, args.disable_dev_shm))
         time.sleep(3)  # let first paint happen before grabbing
