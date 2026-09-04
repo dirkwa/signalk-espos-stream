@@ -5,6 +5,7 @@ import {
   defaultSettings,
   IMAGE,
   isSemverTag,
+  kioskUrl,
   OWN_VERSION,
   resolveTag,
   type ProfileMount,
@@ -63,6 +64,33 @@ describe("applyDefaults", () => {
     const settings = applyDefaults({ advanced: "broken", port: 5014 });
     expect(settings.advanced).toEqual(defaultSettings().advanced);
     expect(settings.port).toBe(5014);
+  });
+});
+
+describe("kioskUrl", () => {
+  it("returns the capture URL untouched without a token", () => {
+    const settings = defaultSettings();
+    expect(kioskUrl(settings)).toBe(settings.captureUrl);
+  });
+
+  it("appends the token with ? on a bare URL and & on a query URL", () => {
+    const settings = defaultSettings();
+    settings.authToken = "abc.def+g";
+    expect(kioskUrl(settings)).toBe(`${settings.captureUrl}?token=abc.def%2Bg`);
+    settings.captureUrl = "http://localhost:80/@signalk/freeboard-sk/?kiosk";
+    expect(kioskUrl(settings)).toBe(
+      "http://localhost:80/@signalk/freeboard-sk/?kiosk&token=abc.def%2Bg",
+    );
+  });
+
+  it("feeds the tokened URL into the container command", () => {
+    const settings = defaultSettings();
+    settings.authToken = "tok";
+    const command =
+      buildContainerConfig(settings, "0.1.0", PROFILE).command ?? [];
+    expect(command[command.indexOf("--url") + 1]).toBe(
+      `${settings.captureUrl}?token=tok`,
+    );
   });
 });
 

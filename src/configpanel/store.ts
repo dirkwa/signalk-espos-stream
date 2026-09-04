@@ -9,6 +9,7 @@ import { create } from "zustand";
 
 export interface FormState {
   captureUrl: string;
+  authToken: string;
   imageTag: string;
   width: string;
   height: string;
@@ -34,6 +35,7 @@ export interface FormActions {
 /** Mirrors defaultSettings() in ../config.ts. */
 export const DEFAULTS: Omit<FormState, "savedMessage" | "hydrated"> = {
   captureUrl: "http://localhost:80/@signalk/freeboard-sk/",
+  authToken: "",
   imageTag: "auto",
   width: "1024",
   height: "600",
@@ -74,6 +76,7 @@ export const useFormStore = create<FormState & FormActions>((set) => ({
     const adv = isRecord(cfg.advanced) ? cfg.advanced : {};
     set({
       captureUrl: str(cfg.captureUrl, DEFAULTS.captureUrl),
+      authToken: typeof cfg.authToken === "string" ? cfg.authToken : "",
       imageTag: str(cfg.imageTag, DEFAULTS.imageTag),
       width: str(cfg.width, DEFAULTS.width),
       height: str(cfg.height, DEFAULTS.height),

@@ -132,6 +132,7 @@ export default function PluginConfigurationPanel({
   const doSave = () => {
     save({
       captureUrl: form.captureUrl.trim() || DEFAULTS.captureUrl,
+      authToken: form.authToken.trim(),
       imageTag: form.imageTag.trim() || DEFAULTS.imageTag,
       width: toInt(form.width, 1024),
       height: toInt(form.height, 600),
@@ -186,6 +187,18 @@ export default function PluginConfigurationPanel({
         onChange={(e) => form.patch({ captureUrl: e.target.value })}
         placeholder={DEFAULTS.captureUrl}
       />
+      <FieldRow
+        label="Access token"
+        hint="appended as ?token= — Freeboard-SK logs in with it and never shows the login dialog"
+      >
+        <input
+          style={{ ...S.input, width: "100%" }}
+          type="password"
+          value={form.authToken}
+          onChange={(e) => form.patch({ authToken: e.target.value })}
+          placeholder="empty = no kiosk login"
+        />
+      </FieldRow>
       <FieldRow label="Geometry" hint="match the panel's display resolution">
         <input
           style={{ ...S.input, width: 70 }}

@@ -65,6 +65,29 @@ designed with signalk-hmi-designer.
 | Advanced: health port  | `5006`                                       | loopback-only                                       |
 | Advanced: memory limit | `1g`                                         | Chromium peaks ~500 MB at 1024x600                  |
 
+### Kiosk login (no keyboard)
+
+On a server with security enabled, Freeboard-SK pops a login dialog that a
+touch-only panel can never answer. Set the **Access token** option instead:
+the plugin appends it to the capture URL as `?token=…`, which Freeboard-SK
+reads at launch and uses for both REST and its stream connection — the
+login dialog never appears (this is FSK's supported kiosk path; the Login
+menu item is hidden when a URL token is present).
+
+Generate a long-lived token with the server's bundled tool, signed against
+your `security.json`:
+
+```bash
+signalk-generate-token -u <user> -e 1y -s ~/.signalk/security.json
+```
+
+(For a containerized server, run it inside the container so the path
+resolves.) Paste the output into the plugin's Access token field. The token
+inherits the named user's permissions — consider a dedicated user if you
+want the kiosk to be read-mostly. It also appears in the container's
+command line locally (`podman inspect`), so treat host access as
+equivalent to holding the token.
+
 The Chromium profile persists in the plugin's data directory
 (`.../plugin-config-data/signalk-espos-stream/chromium-profile`), so a
 login performed in the kiosk (e.g. Freeboard credentials) survives container

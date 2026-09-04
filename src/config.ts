@@ -110,6 +110,16 @@ export const SettingsSchema = Type.Object({
       "any URL. The container uses host networking, so 'localhost' is this " +
       "machine.",
   }),
+  authToken: Type.String({
+    title: "Access token (kiosk login)",
+    default: "",
+    description:
+      "Optional Signal K access token appended to the capture URL as " +
+      "?token=… — Freeboard-SK persists it and skips the login dialog, " +
+      "which a keyboard-less panel could never answer. Generate a " +
+      "long-lived token with signalk-generate-token (see README). Leave " +
+      "empty on servers without security.",
+  }),
   imageTag: Type.String({
     title: "Image tag",
     default: "auto",
@@ -233,6 +243,19 @@ export function isSemverTag(tag: string): boolean {
   return /^\d+\.\d+\.\d+$/.test(tag);
 }
 
+/**
+ * Capture URL with the kiosk token appended, when one is configured.
+ * Freeboard-SK reads ?token= from its launch URL (parseLaunchUrl →
+ * persistToken) and uses it for both REST and the stream socket, hiding
+ * the login dialog entirely — the supported path for keyboard-less kiosks.
+ */
+export function kioskUrl(settings: StreamSettings): string {
+  const token = settings.authToken.trim();
+  if (token === "") return settings.captureUrl;
+  const sep = settings.captureUrl.includes("?") ? "&" : "?";
+  return `${settings.captureUrl}${sep}token=${encodeURIComponent(token)}`;
+}
+
 /** Host-side chromium-profile bind resolved before the container starts. */
 export interface ProfileMount {
   /** Host source path (or named-volume) — the `volumes` value. */
@@ -254,7 +277,7 @@ export function buildContainerConfig(
   const adv = settings.advanced;
   const command = [
     "--url",
-    settings.captureUrl,
+    kioskUrl(settings),
     "--port",
     String(settings.port),
     "--touch-port",
