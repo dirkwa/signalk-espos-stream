@@ -35,6 +35,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -420,11 +421,20 @@ def main():
         time.sleep(1)
         start_url = args.url
         if args.auth_token:
-            global bootstrap_token, bootstrap_target
-            bootstrap_token = args.auth_token
-            bootstrap_target = args.url
-            start_url = f"http://127.0.0.1:{args.health_port}/bootstrap"
-            print("auth cookie bootstrap enabled", flush=True)
+            # The bootstrap MUST be served on the same hostname as the
+            # capture URL: cookies are host-scoped, so one planted via
+            # 127.0.0.1 never reaches a page loaded via localhost. The
+            # health server listens on loopback, which both names reach.
+            cap_host = urllib.parse.urlsplit(args.url).hostname or ""
+            if cap_host in ("localhost", "127.0.0.1"):
+                global bootstrap_token, bootstrap_target
+                bootstrap_token = args.auth_token
+                bootstrap_target = args.url
+                start_url = f"http://{cap_host}:{args.health_port}/bootstrap"
+                print("auth cookie bootstrap enabled", flush=True)
+            else:
+                print(f"auth cookie bootstrap skipped: capture host "
+                      f"'{cap_host}' is not loopback", flush=True)
         print(f"chromium kiosk -> {args.url}", flush=True)
         children.append(start_chromium(args.display, start_url,
                                        args.width, args.height,
