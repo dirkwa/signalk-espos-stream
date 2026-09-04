@@ -170,6 +170,16 @@ def wait_for_url(url: str, budget_s: float = 120.0):
 
 
 def start_xvfb(display: str, width: int, height: int):
+    # A container RESTART (as opposed to a recreate) keeps /tmp, so a
+    # previous run's lock/socket survive and Xvfb refuses the display.
+    # Nothing else owns X displays inside this container — clear them.
+    num = display.lstrip(":")
+    for stale in (f"/tmp/.X{num}-lock", f"/tmp/.X11-unix/X{num}"):
+        try:
+            os.unlink(stale)
+            print(f"removed stale {stale}", flush=True)
+        except FileNotFoundError:
+            pass
     p = subprocess.Popen(
         ["Xvfb", display, "-screen", "0", f"{width}x{height}x24",
          "-nolisten", "tcp"],
