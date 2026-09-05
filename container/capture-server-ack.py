@@ -24,8 +24,11 @@ Usage:
 """
 
 import argparse
+import hmac
 import json
 import os
+import re
+import secrets
 import shutil
 import signal
 import socket
@@ -35,6 +38,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -123,10 +127,69 @@ class Stats:
 
 stats = Stats()
 
+# Set by main() when --auth-token is given: the kiosk Chromium starts on
+# /bootstrap, which plants the Signal K auth cookie for host "localhost"
+# (cookies are port-agnostic) before redirecting to the capture URL. The
+# app frameworks attach a URL token to their own API calls, but plain tile
+# <img> loads carry only cookies — without this, charts render black on a
+# secured server.
+bootstrap_token = None
+bootstrap_target = None
+bootstrap_cap = None  # random single-use capability, only in Chromium's URL
+bootstrap_lock = threading.Lock()
+
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path != "/health":
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/bootstrap":
+            # The token is released only to a request carrying the exact
+            # capability we minted at startup and put ONLY in the kiosk
+            # Chromium's URL — so another local client racing to /bootstrap
+            # cannot read it. The capability is single-use (consumed with
+            # the token, under the lock); a reload, or any request without
+            # the capability, gets a harmless redirect to the
+            # already-cookied target rather than the secret.
+            global bootstrap_token, bootstrap_cap
+            want = urllib.parse.parse_qs(parsed.query).get("cap", [""])[0]
+            with bootstrap_lock:
+                target = bootstrap_target
+                if (
+                    bootstrap_token
+                    and bootstrap_cap
+                    and hmac.compare_digest(want, bootstrap_cap)
+                ):
+                    token = bootstrap_token
+                    bootstrap_token = None
+                    bootstrap_cap = None
+                else:
+                    token = None
+            if token and target:
+                body = (
+                    "<!doctype html><script>\n"
+                    "document.cookie = 'JAUTHENTICATION=' + %s +\n"
+                    "  '; path=/; max-age=31536000; SameSite=Strict';\n"
+                    "location.replace(%s);\n"
+                    "</script>" % (json.dumps(token), json.dumps(target))
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                # No valid capability (a reload, or a racing host-local
+                # process — the loopback endpoint is reachable to any of
+                # them under networkMode host). Return NOTHING useful: not
+                # the cookie, and not a redirect to the target either, since
+                # the target URL still carries ?token=. The intended kiosk
+                # got everything on its one capability-bearing hit.
+                self.send_response(403)
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+            return
+        if parsed.path != "/health":
             self.send_response(404)
             self.end_headers()
             return
@@ -147,6 +210,12 @@ def start_health_server(port: int):
     print(f"health endpoint on http://127.0.0.1:{port}/health", flush=True)
 
 
+def redact_url(url: str) -> str:
+    """URL for LOG lines only: the token query value is a bearer credential
+    and container logs are retained — keep it out of them."""
+    return re.sub(r"([?&]token=)[^&#]*", r"\1***", url)
+
+
 def wait_for_url(url: str, budget_s: float = 120.0):
     """Block until the capture URL answers (any HTTP status counts — the
     server being up is what matters). Chromium loads the URL exactly once;
@@ -157,19 +226,29 @@ def wait_for_url(url: str, budget_s: float = 120.0):
     while time.monotonic() < deadline:
         try:
             urllib.request.urlopen(url, timeout=2).close()
-            print(f"capture URL is up: {url}", flush=True)
+            print(f"capture URL is up: {redact_url(url)}", flush=True)
             return
         except urllib.error.HTTPError:
-            print(f"capture URL answered (HTTP error, server is up): {url}",
-                  flush=True)
+            print(f"capture URL answered (HTTP error, server is up): "
+                  f"{redact_url(url)}", flush=True)
             return
         except OSError:
             time.sleep(2)
-    print(f"capture URL still down after {budget_s:.0f}s, proceeding: {url}",
-          flush=True)
+    print(f"capture URL still down after {budget_s:.0f}s, proceeding: "
+          f"{redact_url(url)}", flush=True)
 
 
 def start_xvfb(display: str, width: int, height: int):
+    # A container RESTART (as opposed to a recreate) keeps /tmp, so a
+    # previous run's lock/socket survive and Xvfb refuses the display.
+    # Nothing else owns X displays inside this container — clear them.
+    num = display.lstrip(":")
+    for stale in (f"/tmp/.X{num}-lock", f"/tmp/.X11-unix/X{num}"):
+        try:
+            os.unlink(stale)
+            print(f"removed stale {stale}", flush=True)
+        except FileNotFoundError:
+            pass
     p = subprocess.Popen(
         ["Xvfb", display, "-screen", "0", f"{width}x{height}x24",
          "-nolisten", "tcp"],
@@ -353,6 +432,10 @@ def main():
     ap.add_argument("--wait-url", action="store_true",
                     help="wait for --url to answer before starting Chromium")
     ap.add_argument("--touch", choices=["on", "off"], default="on")
+    ap.add_argument("--auth-token", default="",
+                    help="Signal K access token; planted as the server auth "
+                         "cookie via a bootstrap page so tile/image requests "
+                         "authenticate too")
     ap.add_argument("--disable-dev-shm", action="store_true",
                     help="Chromium --disable-dev-shm-usage (shm goes to /tmp)")
     args = ap.parse_args()
@@ -362,6 +445,11 @@ def main():
         ap.error("--quality must be 2..31 (ffmpeg -q:v, lower is better)")
     if not 64 <= args.width <= 4096 or not 64 <= args.height <= 4096:
         ap.error("--width/--height must be 64..4096")
+    # The display number feeds os.unlink() paths in start_xvfb — restrict
+    # it to the :N form so it can never name anything outside /tmp's X
+    # artifacts.
+    if not re.fullmatch(r":\d{1,4}", args.display):
+        ap.error("--display must be :N (e.g. :99)")
 
     # This process is container PID 1: a stop delivers SIGTERM, whose
     # default action skips the finally-teardown below and leaves Xvfb,
@@ -380,8 +468,34 @@ def main():
         print(f"Xvfb {args.display} {args.width}x{args.height}", flush=True)
         children.append(start_xvfb(args.display, args.width, args.height))
         time.sleep(1)
-        print(f"chromium kiosk -> {args.url}", flush=True)
-        children.append(start_chromium(args.display, args.url,
+        start_url = args.url
+        if args.auth_token:
+            # The bootstrap MUST be served on the same hostname as the
+            # capture URL: cookies are host-scoped, so one planted via
+            # 127.0.0.1 never reaches a page loaded via localhost. The
+            # health server listens on loopback, which both names reach.
+            cap_host = urllib.parse.urlsplit(args.url).hostname or ""
+            if cap_host in ("localhost", "127.0.0.1"):
+                global bootstrap_token, bootstrap_target, bootstrap_cap
+                bootstrap_token = args.auth_token
+                bootstrap_target = args.url
+                bootstrap_cap = secrets.token_urlsafe(24)
+                start_url = (f"http://{cap_host}:{args.health_port}"
+                             f"/bootstrap?cap={bootstrap_cap}")
+                print("auth cookie bootstrap enabled", flush=True)
+            elif cap_host == "::1":
+                # The health server listens on IPv4 loopback only, so a
+                # bootstrap at http://[::1]:<port>/ would dead-end Chromium
+                # on an error page. Refuse loudly instead of degrading to
+                # cookie-less tiles on what looks like a valid URL.
+                sys.exit("--auth-token with an IPv6 loopback capture URL is "
+                         "not supported — use http://localhost or "
+                         "http://127.0.0.1")
+            else:
+                print(f"auth cookie bootstrap skipped: capture host "
+                      f"'{cap_host}' is not loopback", flush=True)
+        print(f"chromium kiosk -> {redact_url(args.url)}", flush=True)
+        children.append(start_chromium(args.display, start_url,
                                        args.width, args.height,
                                        args.profile, args.disable_dev_shm))
         time.sleep(3)  # let first paint happen before grabbing

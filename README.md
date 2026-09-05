@@ -65,6 +65,38 @@ designed with signalk-hmi-designer.
 | Advanced: health port  | `5006`                                       | loopback-only                                       |
 | Advanced: memory limit | `1g`                                         | Chromium peaks ~500 MB at 1024x600                  |
 
+### Kiosk login (no keyboard)
+
+On a server with security enabled, Freeboard-SK pops a login dialog that a
+touch-only panel can never answer. Set the **Access token** option instead:
+the plugin appends it to the capture URL as `?token=…`, which Freeboard-SK
+reads at launch and uses for both REST and its stream connection — the
+login dialog never appears (this is FSK's supported kiosk path; the Login
+menu item is hidden when a URL token is present).
+
+Click **Generate (1 year)** next to the Access token field in the plugin's
+config panel: it mints a token for your logged-in user through the
+server's own security strategy (the same signing path as
+`signalk-generate-token`) and fills the field — then Save. The admin-only
+`POST /plugins/signalk-espos-stream/api/kiosk-token` route behind the
+button accepts `{"expiration": "90d"}` for a shorter life; it always mints
+for the authenticated requester, so for a dedicated read-mostly kiosk
+user, log into the Admin UI as that user and click Generate there (or use
+the CLI below).
+
+Alternatively, mint one by hand with the server's bundled tool:
+
+```bash
+signalk-generate-token -u <user> -e 1y -s ~/.signalk/security.json
+```
+
+The token inherits the named user's permissions, and it appears in the
+container's command line locally (`podman inspect`), so treat host access
+as equivalent to holding the token. A device access token works here too
+if you still have it — paste it into the field — but the plugin cannot
+recover one for you: the server stores only device metadata, never the
+token itself.
+
 The Chromium profile persists in the plugin's data directory
 (`.../plugin-config-data/signalk-espos-stream/chromium-profile`), so a
 login performed in the kiosk (e.g. Freeboard credentials) survives container
