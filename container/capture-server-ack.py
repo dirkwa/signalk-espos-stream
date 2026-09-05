@@ -178,26 +178,15 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
-            elif target:
-                # Redirect WITHOUT the token: a capability-less caller (or a
-                # reload) must not receive the credential, and the ?token=
-                # query would otherwise leak it via Location and referrer.
-                # Strip ONLY token — any other query params (e.g. view=panel)
-                # and the fragment are part of the intended capture URL and
-                # must survive.
-                tgt = urllib.parse.urlsplit(target)
-                kept = [(k, v) for k, v in
-                        urllib.parse.parse_qsl(tgt.query, keep_blank_values=True)
-                        if k != "token"]
-                clean = urllib.parse.urlunsplit(
-                    (tgt.scheme, tgt.netloc, tgt.path,
-                     urllib.parse.urlencode(kept), tgt.fragment))
-                self.send_response(302)
-                self.send_header("Location", clean)
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
             else:
-                self.send_response(404)
+                # No valid capability (a reload, or a racing host-local
+                # process — the loopback endpoint is reachable to any of
+                # them under networkMode host). Return NOTHING useful: not
+                # the cookie, and not a redirect to the target either, since
+                # the target URL still carries ?token=. The intended kiosk
+                # got everything on its one capability-bearing hit.
+                self.send_response(403)
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
             return
         if parsed.path != "/health":
