@@ -79,8 +79,10 @@ config panel: it mints a token for your logged-in user through the
 server's own security strategy (the same signing path as
 `signalk-generate-token`) and fills the field — then Save. The admin-only
 `POST /plugins/signalk-espos-stream/api/kiosk-token` route behind the
-button also accepts `{"user": "...", "expiration": "90d"}` if you prefer a
-dedicated read-mostly kiosk user or a shorter life.
+button accepts `{"expiration": "90d"}` for a shorter life; it always mints
+for the authenticated requester, so for a dedicated read-mostly kiosk
+user, log into the Admin UI as that user and click Generate there (or use
+the CLI below).
 
 Alternatively, mint one by hand with the server's bundled tool:
 
@@ -90,9 +92,10 @@ signalk-generate-token -u <user> -e 1y -s ~/.signalk/security.json
 
 The token inherits the named user's permissions, and it appears in the
 container's command line locally (`podman inspect`), so treat host access
-as equivalent to holding the token. Device access tokens can't be reused
-here: the server stores only device metadata, never the token itself —
-that lives on the device.
+as equivalent to holding the token. A device access token works here too
+if you still have it — paste it into the field — but the plugin cannot
+recover one for you: the server stores only device metadata, never the
+token itself.
 
 The Chromium profile persists in the plugin's data directory
 (`.../plugin-config-data/signalk-espos-stream/chromium-profile`), so a

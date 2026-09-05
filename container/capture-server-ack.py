@@ -26,6 +26,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -401,6 +402,11 @@ def main():
         ap.error("--quality must be 2..31 (ffmpeg -q:v, lower is better)")
     if not 64 <= args.width <= 4096 or not 64 <= args.height <= 4096:
         ap.error("--width/--height must be 64..4096")
+    # The display number feeds os.unlink() paths in start_xvfb — restrict
+    # it to the :N form so it can never name anything outside /tmp's X
+    # artifacts.
+    if not re.fullmatch(r":\d{1,4}", args.display):
+        ap.error("--display must be :N (e.g. :99)")
 
     # This process is container PID 1: a stop delivers SIGTERM, whose
     # default action skips the finally-teardown below and leaves Xvfb,
@@ -432,6 +438,14 @@ def main():
                 bootstrap_target = args.url
                 start_url = f"http://{cap_host}:{args.health_port}/bootstrap"
                 print("auth cookie bootstrap enabled", flush=True)
+            elif cap_host == "::1":
+                # The health server listens on IPv4 loopback only, so a
+                # bootstrap at http://[::1]:<port>/ would dead-end Chromium
+                # on an error page. Refuse loudly instead of degrading to
+                # cookie-less tiles on what looks like a valid URL.
+                sys.exit("--auth-token with an IPv6 loopback capture URL is "
+                         "not supported — use http://localhost or "
+                         "http://127.0.0.1")
             else:
                 print(f"auth cookie bootstrap skipped: capture host "
                       f"'{cap_host}' is not loopback", flush=True)

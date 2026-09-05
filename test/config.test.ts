@@ -73,6 +73,19 @@ describe("kioskUrl", () => {
     expect(kioskUrl(settings)).toBe(settings.captureUrl);
   });
 
+  it("inserts the token before a URL fragment", () => {
+    const settings = defaultSettings();
+    settings.authToken = "tok";
+    settings.captureUrl = "http://localhost:80/@signalk/kip/#/page/0";
+    expect(kioskUrl(settings)).toBe(
+      "http://localhost:80/@signalk/kip/?token=tok#/page/0",
+    );
+    settings.captureUrl = "http://localhost:80/app/?a=1#frag";
+    expect(kioskUrl(settings)).toBe(
+      "http://localhost:80/app/?a=1&token=tok#frag",
+    );
+  });
+
   it("appends the token with ? on a bare URL and & on a query URL", () => {
     const settings = defaultSettings();
     settings.authToken = "abc.def+g";

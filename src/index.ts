@@ -169,14 +169,16 @@ export default function createPlugin(app: ServerAPI): Plugin {
           typeof r.body === "object" && r.body !== null
             ? (r.body as Record<string, unknown>)
             : {};
-        // Mint for the admin who clicked, unless a user is named explicitly
-        // (e.g. a dedicated read-mostly kiosk user).
-        const user =
-          typeof body.user === "string" && body.user.trim() !== ""
-            ? body.user.trim()
-            : (r.skPrincipal?.identifier ?? "");
+        // Mint ONLY for the authenticated requester: their identity is
+        // proven valid by the login itself, while an arbitrary body-named
+        // user cannot be validated from a plugin (generateToken signs any
+        // id, but authentication resolves only configured users — a typo
+        // would mint a token that can never log in). For a dedicated
+        // kiosk user, log in as that user and click Generate, or use
+        // signalk-generate-token.
+        const user = r.skPrincipal?.identifier ?? "";
         if (user === "") {
-          res.status(400).json({ error: "no user to mint the token for" });
+          res.status(400).json({ error: "no authenticated user to mint for" });
           return;
         }
         const expiration =

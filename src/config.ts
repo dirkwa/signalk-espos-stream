@@ -252,8 +252,14 @@ export function isSemverTag(tag: string): boolean {
 export function kioskUrl(settings: StreamSettings): string {
   const token = settings.authToken.trim();
   if (token === "") return settings.captureUrl;
-  const sep = settings.captureUrl.includes("?") ? "&" : "?";
-  return `${settings.captureUrl}${sep}token=${encodeURIComponent(token)}`;
+  // Insert the query BEFORE any #fragment — appended after it, the token
+  // would be fragment data the app never receives.
+  const hash = settings.captureUrl.indexOf("#");
+  const base =
+    hash < 0 ? settings.captureUrl : settings.captureUrl.slice(0, hash);
+  const fragment = hash < 0 ? "" : settings.captureUrl.slice(hash);
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}token=${encodeURIComponent(token)}${fragment}`;
 }
 
 /** Host-side chromium-profile bind resolved before the container starts. */
