@@ -182,11 +182,16 @@ class HealthHandler(BaseHTTPRequestHandler):
                 # Redirect WITHOUT the token: a capability-less caller (or a
                 # reload) must not receive the credential, and the ?token=
                 # query would otherwise leak it via Location and referrer.
-                # The intended kiosk already got the cookie on its first
-                # (capability-bearing) hit, so a bare target is enough.
+                # Strip ONLY token — any other query params (e.g. view=panel)
+                # and the fragment are part of the intended capture URL and
+                # must survive.
                 tgt = urllib.parse.urlsplit(target)
+                kept = [(k, v) for k, v in
+                        urllib.parse.parse_qsl(tgt.query, keep_blank_values=True)
+                        if k != "token"]
                 clean = urllib.parse.urlunsplit(
-                    (tgt.scheme, tgt.netloc, tgt.path, "", tgt.fragment))
+                    (tgt.scheme, tgt.netloc, tgt.path,
+                     urllib.parse.urlencode(kept), tgt.fragment))
                 self.send_response(302)
                 self.send_header("Location", clean)
                 self.send_header("Cache-Control", "no-store")
