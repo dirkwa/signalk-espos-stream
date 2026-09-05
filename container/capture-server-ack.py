@@ -179,8 +179,16 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
             elif target:
+                # Redirect WITHOUT the token: a capability-less caller (or a
+                # reload) must not receive the credential, and the ?token=
+                # query would otherwise leak it via Location and referrer.
+                # The intended kiosk already got the cookie on its first
+                # (capability-bearing) hit, so a bare target is enough.
+                tgt = urllib.parse.urlsplit(target)
+                clean = urllib.parse.urlunsplit(
+                    (tgt.scheme, tgt.netloc, tgt.path, "", tgt.fragment))
                 self.send_response(302)
-                self.send_header("Location", target)
+                self.send_header("Location", clean)
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
             else:
