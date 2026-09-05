@@ -133,24 +133,42 @@ stats = Stats()
 # secured server.
 bootstrap_token = None
 bootstrap_target = None
+bootstrap_lock = threading.Lock()
 
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/bootstrap" and bootstrap_token and bootstrap_target:
-            body = (
-                "<!doctype html><script>\n"
-                "document.cookie = 'JAUTHENTICATION=' + %s +\n"
-                "  '; path=/; max-age=31536000; SameSite=Strict';\n"
-                "location.replace(%s);\n"
-                "</script>" % (json.dumps(bootstrap_token),
-                               json.dumps(bootstrap_target))
-            ).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+        if self.path == "/bootstrap":
+            # One-time capability: the token is consumed by the first hit
+            # (the kiosk Chromium we just launched) so no other local
+            # client can read it later; subsequent hits — a page reload,
+            # say — get a harmless redirect to the already-cookied target.
+            global bootstrap_token
+            with bootstrap_lock:
+                token, target = bootstrap_token, bootstrap_target
+                bootstrap_token = None
+            if token and target:
+                body = (
+                    "<!doctype html><script>\n"
+                    "document.cookie = 'JAUTHENTICATION=' + %s +\n"
+                    "  '; path=/; max-age=31536000; SameSite=Strict';\n"
+                    "location.replace(%s);\n"
+                    "</script>" % (json.dumps(token), json.dumps(target))
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif target:
+                self.send_response(302)
+                self.send_header("Location", target)
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+            else:
+                self.send_response(404)
+                self.end_headers()
             return
         if self.path != "/health":
             self.send_response(404)
