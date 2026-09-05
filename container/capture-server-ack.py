@@ -173,6 +173,12 @@ def start_health_server(port: int):
     print(f"health endpoint on http://127.0.0.1:{port}/health", flush=True)
 
 
+def redact_url(url: str) -> str:
+    """URL for LOG lines only: the token query value is a bearer credential
+    and container logs are retained — keep it out of them."""
+    return re.sub(r"([?&]token=)[^&#]*", r"\1***", url)
+
+
 def wait_for_url(url: str, budget_s: float = 120.0):
     """Block until the capture URL answers (any HTTP status counts — the
     server being up is what matters). Chromium loads the URL exactly once;
@@ -183,16 +189,16 @@ def wait_for_url(url: str, budget_s: float = 120.0):
     while time.monotonic() < deadline:
         try:
             urllib.request.urlopen(url, timeout=2).close()
-            print(f"capture URL is up: {url}", flush=True)
+            print(f"capture URL is up: {redact_url(url)}", flush=True)
             return
         except urllib.error.HTTPError:
-            print(f"capture URL answered (HTTP error, server is up): {url}",
-                  flush=True)
+            print(f"capture URL answered (HTTP error, server is up): "
+                  f"{redact_url(url)}", flush=True)
             return
         except OSError:
             time.sleep(2)
-    print(f"capture URL still down after {budget_s:.0f}s, proceeding: {url}",
-          flush=True)
+    print(f"capture URL still down after {budget_s:.0f}s, proceeding: "
+          f"{redact_url(url)}", flush=True)
 
 
 def start_xvfb(display: str, width: int, height: int):
@@ -449,7 +455,7 @@ def main():
             else:
                 print(f"auth cookie bootstrap skipped: capture host "
                       f"'{cap_host}' is not loopback", flush=True)
-        print(f"chromium kiosk -> {args.url}", flush=True)
+        print(f"chromium kiosk -> {redact_url(args.url)}", flush=True)
         children.append(start_chromium(args.display, start_url,
                                        args.width, args.height,
                                        args.profile, args.disable_dev_shm))
