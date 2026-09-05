@@ -24,9 +24,11 @@ Usage:
 """
 
 import argparse
+import hmac
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
 import socket
@@ -133,20 +135,35 @@ stats = Stats()
 # secured server.
 bootstrap_token = None
 bootstrap_target = None
+bootstrap_cap = None  # random single-use capability, only in Chromium's URL
 bootstrap_lock = threading.Lock()
 
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/bootstrap":
-            # One-time capability: the token is consumed by the first hit
-            # (the kiosk Chromium we just launched) so no other local
-            # client can read it later; subsequent hits — a page reload,
-            # say — get a harmless redirect to the already-cookied target.
-            global bootstrap_token
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/bootstrap":
+            # The token is released only to a request carrying the exact
+            # capability we minted at startup and put ONLY in the kiosk
+            # Chromium's URL — so another local client racing to /bootstrap
+            # cannot read it. The capability is single-use (consumed with
+            # the token, under the lock); a reload, or any request without
+            # the capability, gets a harmless redirect to the
+            # already-cookied target rather than the secret.
+            global bootstrap_token, bootstrap_cap
+            want = urllib.parse.parse_qs(parsed.query).get("cap", [""])[0]
             with bootstrap_lock:
-                token, target = bootstrap_token, bootstrap_target
-                bootstrap_token = None
+                target = bootstrap_target
+                if (
+                    bootstrap_token
+                    and bootstrap_cap
+                    and hmac.compare_digest(want, bootstrap_cap)
+                ):
+                    token = bootstrap_token
+                    bootstrap_token = None
+                    bootstrap_cap = None
+                else:
+                    token = None
             if token and target:
                 body = (
                     "<!doctype html><script>\n"
@@ -170,7 +187,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
             return
-        if self.path != "/health":
+        if parsed.path != "/health":
             self.send_response(404)
             self.end_headers()
             return
@@ -457,10 +474,12 @@ def main():
             # health server listens on loopback, which both names reach.
             cap_host = urllib.parse.urlsplit(args.url).hostname or ""
             if cap_host in ("localhost", "127.0.0.1"):
-                global bootstrap_token, bootstrap_target
+                global bootstrap_token, bootstrap_target, bootstrap_cap
                 bootstrap_token = args.auth_token
                 bootstrap_target = args.url
-                start_url = f"http://{cap_host}:{args.health_port}/bootstrap"
+                bootstrap_cap = secrets.token_urlsafe(24)
+                start_url = (f"http://{cap_host}:{args.health_port}"
+                             f"/bootstrap?cap={bootstrap_cap}")
                 print("auth cookie bootstrap enabled", flush=True)
             elif cap_host == "::1":
                 # The health server listens on IPv4 loopback only, so a
