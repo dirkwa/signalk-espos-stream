@@ -6,10 +6,6 @@ display — as ACK-paced MJPEG, with a touch backchannel so the panel can drive
 the page. The whole capture chain runs in a single managed container; the
 plugin's only host-side job is configuration, lifecycle and health.
 
-Successor to `signalk-esp32-stream`, replacing its host-installed
-Xvfb/Chromium/ffmpeg chain and systemd unit with a container managed through
-[signalk-container](https://github.com/dirkwa/signalk-container).
-
 ## How it works
 
 ```text
