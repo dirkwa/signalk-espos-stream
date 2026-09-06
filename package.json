@@ -62,7 +62,7 @@
   },
   "dependencies": {
     "signalk-container-helper": "^0.11.0",
-    "typebox": "^1.3.22"
+    "typebox": "^1.3.25"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
