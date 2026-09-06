@@ -42,26 +42,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract release notes from CHANGELOG.md
-        run: |
-          awk -v ver="# ${GITHUB_REF_NAME}" '
-            $0 == ver { found = 1; next }
-            found && /^# v/ { exit }
-            found { print }
-          ' CHANGELOG.md > release-notes.md
-          if [ ! -s release-notes.md ]; then
-            echo "::error::No CHANGELOG.md section found for heading '# ${GITHUB_REF_NAME}'"
-            exit 1
-          fi
-          echo "----- release notes for ${GITHUB_REF_NAME} -----"
-          cat release-notes.md
-
       - name: Create GitHub Release
+        # Notes are generated from merged PRs since the previous tag and
+        # grouped by label per .github/release.yml.
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          body_path: release-notes.md
+          generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
