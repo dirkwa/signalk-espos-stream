@@ -1,0 +1,60 @@
+# Dependabot keeps devDependencies and workflow actions current. The
+# container base image (container/Containerfile) is deliberately not
+# covered: it pins `debian:trixie-slim`, a rolling tag that Dependabot
+# cannot bump meaningfully — it refreshes on every image rebuild.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      # Angular conventional commits; devDeps are chores, runtime deps fixes.
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      # One PR per toolchain cluster keeps review load sane — these
+      # packages only ever move together.
+      babel:
+        patterns:
+          - "@babel/*"
+          - babel-loader
+      eslint:
+        patterns:
+          - eslint
+          - "@eslint/*"
+          - eslint-config-prettier
+          - typescript-eslint
+          - globals
+      webpack:
+        patterns:
+          - webpack
+          - webpack-cli
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+    ignore:
+      # The panel is a Module Federation remote sharing React as a
+      # singleton with the Signal K Admin UI host; a major bump must be
+      # made in lockstep with the server, never by a bot.
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+      # engines.node is >=22; @types/node must not drift ahead of it.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+      include: scope
