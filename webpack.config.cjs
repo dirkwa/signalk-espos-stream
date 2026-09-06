@@ -29,9 +29,12 @@ module.exports = {
         loader: "babel-loader",
         exclude: /node_modules/,
         options: {
+          // Babel 8 removed `isTSX`/`allExtensions` from preset-typescript;
+          // JSX is now inferred from the file extension, which is what this
+          // rule wants anyway — the panel is all .tsx.
           presets: [
             ["@babel/preset-react", { runtime: "automatic" }],
-            ["@babel/preset-typescript", { isTSX: true, allExtensions: true }],
+            "@babel/preset-typescript",
           ],
         },
       },
