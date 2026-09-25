@@ -157,8 +157,9 @@ knowledge_base:
         UDP packets from its own address. Any change to the frame header, the
         ACK pacing or the touch packet layout must say how the widget code
         there keeps working, or land in lockstep. The loopback health port is
-        not part of that contract: only the plugin's waitForHttpReady probes
-        it.
+        not part of that contract: it serves the plugin's own probes (the
+        waitForHttpReady readiness gate, the health loop and the container
+        manager's healthCheck callback), never the panel.
     - repository: dirkwa/signalk-container
       instructions: >-
         The runtime peer that actually runs the container, reached through
