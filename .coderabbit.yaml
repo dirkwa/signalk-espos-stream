@@ -143,3 +143,30 @@ reviews:
         - The duplicated defaults in `src/configpanel/store.ts` — the panel
           bundle cannot import the Node-only server code, and the mirror is
           documented.
+
+knowledge_base:
+  # The capture server has exactly one client and one runtime peer, both in
+  # other repositories. Linked repositories let the reviewer check a wire or
+  # container-config change against the code on the other side.
+  linked_repositories:
+    - repository: dirkwa/espos-p4-cockpit
+      instructions: >-
+        The ESP32-P4 panel firmware whose `stream` widget is the only client
+        of container/capture-server-ack.py: it reads [u32 BE length][JPEG]
+        frames, sends one ACK byte per displayed frame, and injects touch as
+        UDP packets from its own address. Any change to the frame header, the
+        ACK pacing or the touch packet layout must say how the widget code
+        there keeps working, or land in lockstep. The loopback health port is
+        not part of that contract: it serves the plugin's own probes (the
+        waitForHttpReady readiness gate, the health loop and the container
+        manager's healthCheck callback), never the panel.
+    - repository: dirkwa/signalk-container
+      instructions: >-
+        The runtime peer that actually runs the container, reached through
+        globalThis.__signalk_containerManager (wrapped by
+        signalk-container-helper), never imported. It defines the container
+        config fields the plugin may pass (networkMode host is mutually
+        exclusive with ports and signalkAccessiblePorts, host binds with
+        ifMissing, readiness options), how ensureRunning detects drift and
+        recreates, and how image tags resolve. Check buildContainerConfig and
+        the update flow against what it accepts.
