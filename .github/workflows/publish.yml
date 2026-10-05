@@ -134,9 +134,11 @@ jobs:
           fi
           echo "releasing ${pkg_version}"
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          # Only the highest stable tag may move `latest`, so republishing
-          # an older release by hand cannot roll users back.
-          newest=$(git tag -l 'v*' --sort=-v:refname | grep -Ev 'alpha|beta|rc' | head -n1)
+          # Only the highest stable tag on master may move `latest`, so
+          # republishing an older release by hand cannot roll users back and
+          # a prerelease or a stray tag off master cannot hold it back.
+          git fetch --no-tags origin master
+          newest=$(git tag -l 'v*' --merged FETCH_HEAD --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
           if [ "$TAG" = "$newest" ]; then
             echo "is_latest=true" >> "$GITHUB_OUTPUT"
           else
