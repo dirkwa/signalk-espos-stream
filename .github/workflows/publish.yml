@@ -74,10 +74,10 @@ jobs:
 
   verify:
     needs: release-please
-    # always(), because the release is already out by the time the PR step
+    # !cancelled(), because the release is already out by the time the PR step
     # can fail; whether to publish is answered by release_created alone. A
     # tagged release whose image never pushed is exactly issue #18.
-    if: always() && needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -103,7 +103,7 @@ jobs:
     needs: [release-please, verify]
     # needs on a failed release-please job would skip this even after verify
     # passed; publish whenever the release exists and verify succeeded.
-    if: always() && needs.verify.result == 'success'
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -146,7 +146,7 @@ jobs:
     # npm publishes LAST: once the package is on the registry, every
     # install can resolve imageTag "auto" to an image that already exists.
     needs: [release-please, image]
-    if: always() && needs.image.result == 'success'
+    if: ${{ !cancelled() && needs.image.result == 'success' }}
     permissions:
       id-token: write # OIDC trusted publishing
       contents: read
