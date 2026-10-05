@@ -16,7 +16,7 @@
     "public",
     "icon.svg",
     "README.md",
-    "LICENSE.md"
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc && webpack",
@@ -44,10 +44,10 @@
     "marine"
   ],
   "author": "Dirk Wahrheit",
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dirkwa/signalk-espos-stream.git"
+    "url": "git+https://github.com/signalk-espOS/signalk-espos-stream.git"
   },
   "signalk": {
     "displayName": "espOS Display Stream",

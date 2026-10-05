@@ -240,7 +240,7 @@ jobs:
           IS_LATEST: ${{ needs.verify.outputs.is_latest }}
         run: |
           version="${TAG#v}"
-          image="ghcr.io/dirkwa/signalk-espos-stream"
+          image="ghcr.io/signalk-espos/signalk-espos-stream"
           docker build -f container/Containerfile -t "$image:$version" container/
           docker push "$image:$version"
           # `latest` tracks the newest stable release only — a beta pushed as

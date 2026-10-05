@@ -9,22 +9,11 @@ host-level systemd chain this replaces.
 
 ## Licensing
 
-This project is **source-available, not open source**: use and modification are
-free, redistribution is not. `LICENSE.md` is authoritative.
-
-- **Never propose returning to a permissive license** — that is the copyright
-  holder's decision alone.
-- `package.json` uses `"license": "SEE LICENSE IN LICENSE.md"`. This is not an
-  SPDX-listed license; inventing an identifier breaks tooling validation.
-- `CONTRIBUTING.md` carries an inbound contribution grant.
-- The license text derives from a plain-language template whose authors permit
-  adaptation only if all mention of their project is removed. It has been. Do
-  not add attribution to them back in.
-- **Runtime dependency licenses gate this.** Runtime deps are
-  `signalk-container-helper` (Apache-2.0) and `typebox` (MIT). The config
-  panel bundles `zustand` (MIT) into `public/remoteEntry.js`, which ships in
-  the npm package. Re-check before adding a runtime or bundled dependency;
-  pure devDependencies do not matter.
+The project is licensed under the Apache License 2.0 (`LICENSE`), like the
+other signalk-espOS repositories, and `package.json` says `"license":
+"Apache-2.0"`. Contributions come in under the same licence. Runtime and
+bundled dependency licences still gate additions: `dependencies` and anything
+webpack bundles into `public/` ship to users.
 
 ## Architecture rules
 
@@ -67,7 +56,7 @@ free, redistribution is not. `LICENSE.md` is authoritative.
 ## Packaging
 
 `files` in package.json is an allowlist: `dist/`, `public/` (the config
-panel), LICENSE.md and README.md ship. The `container/` directory and
+panel), LICENSE and README.md ship. The `container/` directory and
 workflows do not — the image is distributed via ghcr, not npm.
 
 The npm-version trap applies to publishing: OIDC trusted publishing requires

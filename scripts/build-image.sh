@@ -9,7 +9,7 @@ set -eu
 
 cd "$(dirname "$0")/.."
 VERSION=$(node -p "require('./package.json').version")
-IMAGE=ghcr.io/dirkwa/signalk-espos-stream
+IMAGE=ghcr.io/signalk-espos/signalk-espos-stream
 
 exec nice -n 15 ionice -c 3 podman build \
     -t "$IMAGE:dev" \
