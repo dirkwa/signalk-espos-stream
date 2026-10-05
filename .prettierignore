@@ -4,3 +4,4 @@ public/
 package-lock.json
 container/capture-server-ack.py
 icon.svg
+CHANGELOG.md

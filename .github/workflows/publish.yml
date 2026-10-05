@@ -1,17 +1,24 @@
-name: Release
+name: Publish
 
-# One dependency graph for the whole release: the tag version must equal
-# package.json's version (imageTag "auto" resolves to it at runtime), the
-# container image must be pushed before the npm package publishes, and a
-# failure anywhere stops the chain — so an installed plugin can never
-# resolve "auto" to an image tag that was not published.
+# Called by release-please.yml once it has tagged a release. The tag version
+# must equal package.json's version (imageTag "auto" resolves to it at
+# runtime), the container image must be pushed before the npm package
+# publishes, and a failure anywhere stops the chain -- so an installed plugin
+# can never resolve "auto" to an image tag that was not published.
+#
+# There is deliberately no tag trigger of its own: npm's trusted publisher
+# names one workflow, and it is the caller. To recover a failed publish,
+# re-run the failed jobs of that release-please run.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag, e.g. v0.2.0
+        required: true
+        type: string
 
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -22,37 +29,20 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Tag must match package.json version
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          tag_version="${GITHUB_REF_NAME#v}"
+          tag_version="${TAG#v}"
           pkg_version=$(node -p "require('./package.json').version")
           if [ "$tag_version" != "$pkg_version" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${pkg_version}"
+            echo "::error::tag ${TAG} does not match package.json version ${pkg_version}"
             exit 1
           fi
           echo "releasing ${pkg_version}"
-
-  release:
-    needs: verify
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Create GitHub Release
-        # Notes are generated from merged PRs since the previous tag and
-        # grouped by label per .github/release.yml.
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   image:
     needs: verify
@@ -63,6 +53,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
@@ -72,15 +64,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           image="ghcr.io/dirkwa/signalk-espos-stream"
           docker build -t "$image:$version" container/
           docker push "$image:$version"
           # `latest` tracks stable releases only — a beta pushed as latest
           # would reach container users who never opted into the npm
           # prerelease channel.
-          case "$GITHUB_REF_NAME" in
+          case "$TAG" in
             *alpha* | *beta* | *rc*)
               echo "prerelease tag — not updating latest"
               ;;
@@ -93,7 +87,7 @@ jobs:
   publish:
     # npm publishes LAST: once the package is on the registry, every
     # install can resolve imageTag "auto" to an image that already exists.
-    needs: [release, image]
+    needs: image
     permissions:
       id-token: write # OIDC trusted publishing
       contents: read
@@ -101,6 +95,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
 
       - uses: actions/setup-node@v7
         with:
@@ -114,13 +110,14 @@ jobs:
       - run: npm ci
 
       - name: Publish to npm
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          if [[ "$tag" == *alpha* ]]; then
+          if [[ "$TAG" == *alpha* ]]; then
             npm publish --provenance --access public --tag alpha
-          elif [[ "$tag" == *beta* ]]; then
+          elif [[ "$TAG" == *beta* ]]; then
             npm publish --provenance --access public --tag beta
-          elif [[ "$tag" == *rc* ]]; then
+          elif [[ "$TAG" == *rc* ]]; then
             npm publish --provenance --access public --tag rc
           else
             npm publish --provenance --access public

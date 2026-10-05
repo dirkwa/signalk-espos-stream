@@ -30,7 +30,6 @@
     "format": "npm run prettier && npm run lint",
     "ci-lint": "eslint && prettier --check .",
     "build-image": "scripts/build-image.sh",
-    "release": "git tag -d v$npm_package_version; git tag v$npm_package_version && git push && git push origin v$npm_package_version",
     "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
