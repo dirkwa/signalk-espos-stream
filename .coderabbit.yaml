@@ -92,8 +92,8 @@ reviews:
 
         ## Licensing
 
-        The project is source-available (LICENSE.md is authoritative); never
-        propose relicensing. Runtime and bundled dependency licenses gate
+        The project is licensed under Apache-2.0 (LICENSE). Runtime and
+        bundled dependency licenses gate
         additions: `dependencies` and anything webpack bundles into
         `public/` ship to users; devDependencies do not.
 

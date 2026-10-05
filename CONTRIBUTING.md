@@ -17,12 +17,7 @@ branch names use hyphens rather than slashes.
 
 ## Licensing of contributions
 
-By submitting a pull request or patch, you grant Dirk Wahrheit a perpetual,
-worldwide, non-exclusive, royalty-free, irrevocable license to use, reproduce,
-modify, publish, sublicense and distribute your contribution, and to relicense
-it under any terms, including as part of signalk-espos-stream releases. You
-confirm that you have the right to grant this.
-
-This keeps future licensing decisions for the project in one pair of hands. It
-does not affect what you may do with your own contribution elsewhere — you keep
-your copyright in it.
+signalk-espos-stream is licensed under the Apache License 2.0. By submitting a
+pull request or patch, you agree that your contribution is licensed under the
+same licence, as section 5 of it provides, and confirm that you have the right
+to do so.

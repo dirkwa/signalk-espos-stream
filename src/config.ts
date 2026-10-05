@@ -22,9 +22,9 @@ export const PLUGIN_ID = "signalk-espos-stream";
 export const PLUGIN_NAME = "espOS Display Stream";
 /** Unprefixed container name; runs as `sk-espos-stream` on the host runtime. */
 export const CONTAINER_NAME = "espos-stream";
-export const IMAGE = "ghcr.io/dirkwa/signalk-espos-stream";
+export const IMAGE = "ghcr.io/signalk-espos/signalk-espos-stream";
 /** GitHub repo backing both the npm package and the container image. */
-export const GITHUB_REPO = "dirkwa/signalk-espos-stream";
+export const GITHUB_REPO = "signalk-espOS/signalk-espos-stream";
 /** X display inside the container — private namespace, never collides. */
 export const CONTAINER_DISPLAY = ":99";
 /** Chromium profile mount point inside the container. */

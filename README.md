@@ -1,7 +1,7 @@
 # signalk-espos-stream
 
 Streams a browser-rendered Signal K dashboard (Freeboard-SK, KIP, any URL) to
-an [espOS](https://github.com/dirkwa/espOS) panel — an ESP32-P4 cockpit
+an [espOS](https://github.com/signalk-espOS/espOS) panel — an ESP32-P4 cockpit
 display — as ACK-paced MJPEG, with a touch backchannel so the panel can drive
 the page. The whole capture chain runs in a single managed container; the
 plugin's only host-side job is configuration, lifecycle and health.
@@ -100,12 +100,12 @@ recreation.
 
 ## Local image build (development)
 
-The released image lives at `ghcr.io/dirkwa/signalk-espos-stream` and is
+The released image lives at `ghcr.io/signalk-espos/signalk-espos-stream` and is
 published by CI with each release, before the npm package. For development
 on the server itself:
 
 ```bash
-npm run build-image   # tags ghcr.io/dirkwa/signalk-espos-stream:dev and :<version>
+npm run build-image   # tags ghcr.io/signalk-espos/signalk-espos-stream:dev and :<version>
 ```
 
 Set the plugin's Image tag to `dev` (or leave `auto`, which matches the
@@ -121,4 +121,4 @@ version tag the script also applies).
 
 ## License
 
-Source-available, no redistribution — see [LICENSE.md](LICENSE.md).
+Apache-2.0 — see [LICENSE](LICENSE).
