@@ -7,7 +7,8 @@
 # the workflow's own token never starts another workflow, so a tag trigger
 # would never fire, and because npm's trusted publisher names the workflow
 # that runs `npm publish`. It is called publish.yml like in every other
-# plugin repo. To recover a failed publish, re-run its failed jobs.
+# plugin repo. To recover a failed publish, re-run its failed jobs, or run
+# this workflow by hand with the release tag once the fix is on master.
 #
 # The tag version must equal package.json's version (imageTag "auto"
 # resolves to it at runtime), the container image must be pushed before the
@@ -26,6 +27,12 @@ name: Publish
 on:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish, e.g. v0.1.1
+        required: true
+        type: string
 
 permissions: {}
 
@@ -35,6 +42,7 @@ concurrency:
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -77,7 +85,7 @@ jobs:
     # !cancelled(), because the release is already out by the time the PR step
     # can fail; whether to publish is answered by release_created alone. A
     # tagged release whose image never pushed is exactly issue #18.
-    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ !cancelled() && (inputs.tag != '' || needs.release-please.outputs.release_created == 'true') }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -85,11 +93,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
 
       - name: Tag must match package.json version
         env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
         run: |
           tag_version="${TAG#v}"
           pkg_version=$(node -p "require('./package.json').version")
@@ -112,7 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
@@ -123,11 +131,11 @@ jobs:
 
       - name: Build and push
         env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
         run: |
           version="${TAG#v}"
           image="ghcr.io/dirkwa/signalk-espos-stream"
-          docker build -t "$image:$version" container/
+          docker build -f container/Containerfile -t "$image:$version" container/
           docker push "$image:$version"
           # `latest` tracks stable releases only — a beta pushed as latest
           # would reach container users who never opted into the npm
@@ -155,7 +163,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
 
       - uses: actions/setup-node@v7
         with:
@@ -170,7 +178,7 @@ jobs:
 
       - name: Publish to npm
         env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
         run: |
           if [[ "$TAG" == *alpha* ]]; then
             npm publish --provenance --access public --tag alpha
