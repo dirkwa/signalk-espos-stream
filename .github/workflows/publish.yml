@@ -101,6 +101,9 @@ jobs:
 
   image:
     needs: [release-please, verify]
+    # needs on a failed release-please job would skip this even after verify
+    # passed; publish whenever the release exists and verify succeeded.
+    if: always() && needs.verify.result == 'success'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -143,6 +146,7 @@ jobs:
     # npm publishes LAST: once the package is on the registry, every
     # install can resolve imageTag "auto" to an image that already exists.
     needs: [release-please, image]
+    if: always() && needs.image.result == 'success'
     permissions:
       id-token: write # OIDC trusted publishing
       contents: read
