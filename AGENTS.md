@@ -86,8 +86,9 @@ ones GitHub generates: each PR's title with its author, sorted by the label
 the PR title is the release note. Only `feat`, `fix`, `perf`, `revert`, a
 breaking change, a `build(deps)` bump or a `Release-As:` footer refreshes
 the release PR, and the release PR's own merge is let through to tag it (the
-gate in `publish.yml`); running `publish.yml` by hand without a tag
-refreshes it after a change to the release configuration.
+gate in `publish.yml`). So is a push of 2048 commits or more, which the
+event cannot list in full. Running `publish.yml` by hand without a tag
+refreshes the release PR after a change to the release configuration.
 
 ## Conventions
 
