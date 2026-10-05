@@ -90,6 +90,11 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # The publish jobs build this exact commit rather than re-resolving the
+    # tag, which could have moved since it was checked here.
+    outputs:
+      commit_sha: ${{ steps.verified.outputs.commit_sha }}
+      is_latest: ${{ steps.verified.outputs.is_latest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -117,6 +122,7 @@ jobs:
           fi
 
       - name: Tag must match package.json version
+        id: verified
         env:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
         run: |
@@ -127,6 +133,15 @@ jobs:
             exit 1
           fi
           echo "releasing ${pkg_version}"
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # Only the highest stable tag may move `latest`, so republishing
+          # an older release by hand cannot roll users back.
+          newest=$(git tag -l 'v*' --sort=-v:refname | grep -Ev 'alpha|beta|rc' | head -n1)
+          if [ "$TAG" = "$newest" ]; then
+            echo "is_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+          fi
 
   image:
     needs: [release-please, verify]
@@ -144,7 +159,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: refs/tags/${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.verify.outputs.commit_sha }}
           persist-credentials: false
 
       - name: Log in to ghcr.io
@@ -157,28 +172,26 @@ jobs:
       - name: Build and push
         env:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          IS_LATEST: ${{ needs.verify.outputs.is_latest }}
         run: |
           version="${TAG#v}"
           image="ghcr.io/dirkwa/signalk-espos-stream"
           docker build -f container/Containerfile -t "$image:$version" container/
           docker push "$image:$version"
-          # `latest` tracks stable releases only — a beta pushed as latest
-          # would reach container users who never opted into the npm
+          # `latest` tracks the newest stable release only — a beta pushed as
+          # latest would reach container users who never opted into the npm
           # prerelease channel.
-          case "$TAG" in
-            *alpha* | *beta* | *rc*)
-              echo "prerelease tag — not updating latest"
-              ;;
-            *)
-              docker tag "$image:$version" "$image:latest"
-              docker push "$image:latest"
-              ;;
-          esac
+          if [ "$IS_LATEST" = "true" ]; then
+            docker tag "$image:$version" "$image:latest"
+            docker push "$image:latest"
+          else
+            echo "not the newest stable tag — not updating latest"
+          fi
 
   publish:
     # npm publishes LAST: once the package is on the registry, every
     # install can resolve imageTag "auto" to an image that already exists.
-    needs: [release-please, image]
+    needs: [release-please, verify, image]
     environment: release
     if: ${{ !cancelled() && needs.image.result == 'success' }}
     permissions:
@@ -189,7 +202,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: refs/tags/${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.verify.outputs.commit_sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@v7
@@ -206,13 +219,23 @@ jobs:
       - name: Publish to npm
         env:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          IS_LATEST: ${{ needs.verify.outputs.is_latest }}
         run: |
+          version="${TAG#v}"
+          # A manual re-run of a release that already reached npm has
+          # nothing left to publish; npm would reject the version anyway.
+          if [ "$(npm view "signalk-espos-stream@${version}" version 2>/dev/null)" = "$version" ]; then
+            echo "${version} is already on npm"
+            exit 0
+          fi
           if [[ "$TAG" == *alpha* ]]; then
             npm publish --provenance --access public --tag alpha
           elif [[ "$TAG" == *beta* ]]; then
             npm publish --provenance --access public --tag beta
           elif [[ "$TAG" == *rc* ]]; then
             npm publish --provenance --access public --tag rc
-          else
+          elif [ "$IS_LATEST" = "true" ]; then
             npm publish --provenance --access public
+          else
+            npm publish --provenance --access public --tag previous
           fi
