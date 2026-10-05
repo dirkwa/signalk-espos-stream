@@ -130,6 +130,9 @@ jobs:
 
   image:
     needs: [release-please, verify]
+    # The release environment admits only master. npm's trusted publisher
+    # names it, so a workflow edited on a side branch cannot publish to npm.
+    environment: release
     # needs on a failed release-please job would skip this even after verify
     # passed; publish whenever the release exists and verify succeeded.
     if: ${{ !cancelled() && needs.verify.result == 'success' }}
@@ -176,6 +179,7 @@ jobs:
     # npm publishes LAST: once the package is on the registry, every
     # install can resolve imageTag "auto" to an image that already exists.
     needs: [release-please, image]
+    environment: release
     if: ${{ !cancelled() && needs.image.result == 'success' }}
     permissions:
       id-token: write # OIDC trusted publishing
