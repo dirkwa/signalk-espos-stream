@@ -1,0 +1,76 @@
+# Cuts releases from the history, the way espOS and the cockpit do: every
+# push to master refreshes a "chore: release x.y.z" pull request carrying the
+# changelog and the package.json bump, and merging that PR tags the release
+# and publishes it. feat bumps minor, fix bumps patch, a `!` bumps major.
+#
+# A release created here is created with the workflow's own token, and GitHub
+# never lets such an event start another workflow -- so publishing is called
+# directly rather than left to a tag trigger. This is also the workflow npm's
+# trusted publisher must name: npm checks the calling workflow, not the
+# reusable one that runs `npm publish`.
+#
+# The release PR, though, is opened with a GitHub App's token
+# (RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY): GitHub holds the checks of a
+# PR opened with the workflow token until a maintainer approves them, while
+# an App's PR runs them at once. So release-please runs twice, the release
+# with the workflow token and the PR with the App's. Without the secrets the
+# PR falls back to the workflow token, and its checks wait for approval.
+name: release-please
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    env:
+      # A flag, because a step's `if` cannot read secrets. Only the flag: the
+      # key itself in the job environment would reach every step.
+      APP_CONFIGURED: >-
+        ${{ secrets.RELEASE_APP_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        id: rp
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-pull-request: true
+
+      - name: Get the App token for the release PR
+        id: app-token
+        if: env.APP_CONFIGURED == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true
+          token: ${{ steps.app-token.outputs.token || github.token }}
+
+  publish:
+    needs: release-please
+    # always(), because the release is already out by the time the PR step
+    # can fail; whether to publish is answered by release_created alone. A
+    # tagged release whose image never pushed is exactly issue #18.
+    if: always() && needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}

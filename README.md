@@ -101,7 +101,8 @@ recreation.
 ## Local image build (development)
 
 The released image lives at `ghcr.io/dirkwa/signalk-espos-stream` and is
-published by CI on release tags. For development on the server itself:
+published by CI with each release, before the npm package. For development
+on the server itself:
 
 ```bash
 npm run build-image   # tags ghcr.io/dirkwa/signalk-espos-stream:dev and :<version>
