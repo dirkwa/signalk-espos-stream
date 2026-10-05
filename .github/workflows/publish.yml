@@ -75,7 +75,7 @@ jobs:
       # to refresh or a merged one still to tag, and stops when only docs or
       # ci changes are unreleased. With no tag for the manifest's version --
       # a merged release PR whose tag was never created -- it goes on.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'workflow_dispatch'
         with:
           fetch-depth: 0

@@ -84,9 +84,10 @@ The release notes, which the release PR also adds to `CHANGELOG.md`, are the
 ones GitHub generates: each PR's title with its author, sorted by the label
 `label-by-title.yml` sets from the title's type (`.github/release.yml`), so
 the PR title is the release note. Only `feat`, `fix`, `perf`, `revert`, a
-breaking change or a `build(deps)` bump refreshes the release PR (the gate
-in `publish.yml`); running `publish.yml` by hand without a tag refreshes it
-after a change to the release configuration.
+breaking change, a `build(deps)` bump or a `Release-As:` footer refreshes
+the release PR, and the release PR's own merge is let through to tag it (the
+gate in `publish.yml`); running `publish.yml` by hand without a tag
+refreshes it after a change to the release configuration.
 
 ## Conventions
 
