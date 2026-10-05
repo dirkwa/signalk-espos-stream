@@ -80,6 +80,14 @@ publishes npm (image first, npm last). Never bump the version or push a
 release tag by hand. npm's trusted publisher names `publish.yml`, as in the
 other plugin repos.
 
+The release notes, which the release PR also adds to `CHANGELOG.md`, are the
+ones GitHub generates: each PR's title with its author, sorted by the label
+`label-by-title.yml` sets from the title's type (`.github/release.yml`), so
+the PR title is the release note. Only `feat`, `fix`, `perf`, `revert`, a
+breaking change or a `build(deps)` bump refreshes the release PR (the gate
+in `publish.yml`); running `publish.yml` by hand without a tag refreshes it
+after a change to the release configuration.
+
 ## Conventions
 
 - Angular conventional commits; branch names use hyphens, never slashes.
