@@ -12,6 +12,12 @@
 # needs nothing special for it.
 FROM debian:trixie-slim
 
+# ghcr shows these on the package page: the repository it links to, the
+# description and the licence.
+LABEL org.opencontainers.image.source="https://github.com/signalk-espOS/signalk-espos-stream" \
+      org.opencontainers.image.description="espOS panel display streaming for Signal K: browser-rendered dashboards as ACK-paced MJPEG with a touch backchannel" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium \
