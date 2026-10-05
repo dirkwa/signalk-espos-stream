@@ -93,7 +93,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          ref: refs/tags/${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      # A manual run may name any tag, so it publishes only one that is
+      # already a published release and reachable from master -- the same
+      # thing a release-please run would have published.
+      - name: Manual runs publish only released tags on master
+        if: inputs.tag != ''
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != "false" ]; then
+            echo "::error::${TAG} is not a published release"
+            exit 1
+          fi
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "refs/tags/${TAG}" FETCH_HEAD; then
+            echo "::error::${TAG} is not on master"
+            exit 1
+          fi
 
       - name: Tag must match package.json version
         env:
@@ -120,7 +141,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          ref: refs/tags/${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          persist-credentials: false
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
@@ -163,7 +185,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          ref: refs/tags/${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
