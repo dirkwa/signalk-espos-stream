@@ -1,7 +1,12 @@
-# Cuts releases from the history, the way espOS and the cockpit do: every
-# push to master refreshes a "chore: release x.y.z" pull request carrying the
-# changelog and the package.json bump, and merging that PR tags the release
-# and publishes it. feat bumps minor, fix bumps patch, a `!` bumps major.
+# Cuts releases from the history, the way espOS and the cockpit do: a push
+# to master that carries a change users get (the gate below) refreshes a
+# "chore: release x.y.z" pull request carrying the package.json bump and the
+# release notes, also added to CHANGELOG.md, and merging that PR tags the
+# release and publishes it. feat bumps minor, fix bumps patch, a `!` bumps
+# major. The notes are the ones GitHub generates for the pull requests since
+# the last release, each with its author and a link to it, sorted by the
+# labels label-by-title.yml sets (.github/release.yml), as in
+# mayara-server-signalk-plugin.
 #
 # Releasing and publishing share one workflow because a release created with
 # the workflow's own token never starts another workflow, so a tag trigger
@@ -27,11 +32,15 @@ name: Publish
 on:
   push:
     branches: [master]
+  # With a tag, publishes that existing release again. Without one, runs
+  # release-please, which rewrites the open release PR against the current
+  # configuration -- a change to it is a ci merge, which the gate lets pass
+  # by.
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to publish, e.g. v0.1.1
-        required: true
+        description: Existing release tag to publish, e.g. v0.1.1; empty refreshes the release PR
+        required: false
         type: string
 
 permissions: {}
@@ -41,8 +50,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # GitHub's release notes are never empty -- they always end in a "Full
+  # Changelog" link -- so release-please, which skips a release only when its
+  # notes are empty, would propose one after every merge, a docs or ci change
+  # included. Only a push carrying a change users get goes on to it: feat,
+  # fix, perf or revert, a breaking change whatever its type, a runtime
+  # dependency bump (dependabot scopes those `deps`, dev ones `deps-dev`), a
+  # `Release-As:` footer because it names the release to cut, and the merge
+  # of the release PR itself (pull-request-title-pattern in
+  # release-please-config.json), which is what creates the tag. The subject
+  # is each message's first line. The payload holds at most 2048 commits, so
+  # a push that fills it may hide more and is let through.
+  gate:
+    if: github.event_name == 'push' || inputs.tag == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      releasable: ${{ steps.check.outputs.releasable }}
+    steps:
+      # A manual run carries no commits of its own, so it judges every commit
+      # since the last release instead: it goes on when there is a release PR
+      # to refresh or a merged one still to tag, and stops when only docs or
+      # ci changes are unreleased. With no tag for the manifest's version --
+      # a merged release PR whose tag was never created -- it goes on.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        env:
+          DISPATCHED: ${{ github.event_name == 'workflow_dispatch' }}
+          MESSAGES: ${{ toJSON(github.event.commits.*.message) }}
+          RELEASABLE: '^((feat|fix|perf|revert)(\([^)]*\))?!?: |[a-z]+(\([^)]*\))?!: |build\(deps\): |Revert |chore: release v?[0-9])'
+        run: |
+          if [ "$DISPATCHED" = true ]; then
+            last="v$(jq -er '."."' .release-please-manifest.json)"
+            if ! git rev-parse -q --verify "refs/tags/$last" > /dev/null; then
+              echo "releasable=true" >> "$GITHUB_OUTPUT"
+              echo "No tag $last; release-please not gated."
+              exit 0
+            fi
+            MESSAGES=$(git log -z --format=%B "$last..HEAD" | jq -Rs 'split("\u0000") | map(select(. != ""))')
+            echo "Judging the $(jq length <<< "$MESSAGES") commits since $last."
+          fi
+          if jq -e --arg re "$RELEASABLE" '(length >= 2048) or ([.[] | (split("\n")[0] | test($re)) or test("\nBREAKING[- ]CHANGE: ") or test("\nRelease-As: "; "i")] | any)' <<< "$MESSAGES" > /dev/null; then
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "releasable=false" >> "$GITHUB_OUTPUT"
+            echo "No releasable commit; release-please not run."
+          fi
+
   release-please:
-    if: github.event_name == 'push'
+    needs: gate
+    if: needs.gate.outputs.releasable == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
