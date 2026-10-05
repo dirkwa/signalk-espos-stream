@@ -1,6 +1,6 @@
 {
   "name": "signalk-espos-stream",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Streams a browser-rendered Signal K dashboard to an espOS panel as ACK-paced MJPEG with a touch backchannel, running the capture chain (Xvfb + Chromium + ffmpeg) in a managed container.",
   "type": "module",
   "main": "dist/index.js",
