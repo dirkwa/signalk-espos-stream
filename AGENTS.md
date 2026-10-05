@@ -75,9 +75,10 @@ npm ≥ 11.5, while npm 12 breaks `--provenance` with "Cannot find module
 'sigstore'". The publish workflow pins `npm@^11`.
 
 Releases are cut by release-please: merging its `chore: release x.y.z` PR
-tags the release, and `release-please.yml` then calls `publish.yml` (image
-first, npm last). Never bump the version or push a release tag by hand. npm's
-trusted publisher must name `release-please.yml`, the calling workflow.
+tags the release, and the same `publish.yml` run then pushes the image and
+publishes npm (image first, npm last). Never bump the version or push a
+release tag by hand. npm's trusted publisher names `publish.yml`, as in the
+other plugin repos.
 
 ## Conventions
 

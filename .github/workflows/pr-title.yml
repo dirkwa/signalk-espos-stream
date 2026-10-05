@@ -1,5 +1,5 @@
 # The changelog is generated from pull request titles (release-please, see
-# release-please.yml), so a title that is not a Conventional Commit is a
+# publish.yml), so a title that is not a Conventional Commit is a
 # change that never appears in the notes. Same check as espOS and the cockpit.
 name: PR title
 
