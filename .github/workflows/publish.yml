@@ -7,7 +7,8 @@
 # the workflow's own token never starts another workflow, so a tag trigger
 # would never fire, and because npm's trusted publisher names the workflow
 # that runs `npm publish`. It is called publish.yml like in every other
-# plugin repo. To recover a failed publish, re-run its failed jobs.
+# plugin repo. To recover a failed publish, re-run its failed jobs, or run
+# this workflow by hand with the release tag once the fix is on master.
 #
 # The tag version must equal package.json's version (imageTag "auto"
 # resolves to it at runtime), the container image must be pushed before the
@@ -26,6 +27,12 @@ name: Publish
 on:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish, e.g. v0.1.1
+        required: true
+        type: string
 
 permissions: {}
 
@@ -35,6 +42,7 @@ concurrency:
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -77,19 +85,46 @@ jobs:
     # !cancelled(), because the release is already out by the time the PR step
     # can fail; whether to publish is answered by release_created alone. A
     # tagged release whose image never pushed is exactly issue #18.
-    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ !cancelled() && (inputs.tag != '' || needs.release-please.outputs.release_created == 'true') }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # The publish jobs build this exact commit rather than re-resolving the
+    # tag, which could have moved since it was checked here.
+    outputs:
+      commit_sha: ${{ steps.verified.outputs.commit_sha }}
+      is_latest: ${{ steps.verified.outputs.is_latest }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: refs/tags/${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      # A manual run may name any tag, so it publishes only one that is
+      # already a published release and reachable from master -- the same
+      # thing a release-please run would have published.
+      - name: Manual runs publish only released tags on master
+        if: inputs.tag != ''
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != "false" ]; then
+            echo "::error::${TAG} is not a published release"
+            exit 1
+          fi
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "refs/tags/${TAG}" FETCH_HEAD; then
+            echo "::error::${TAG} is not on master"
+            exit 1
+          fi
 
       - name: Tag must match package.json version
+        id: verified
         env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
         run: |
           tag_version="${TAG#v}"
           pkg_version=$(node -p "require('./package.json').version")
@@ -98,9 +133,23 @@ jobs:
             exit 1
           fi
           echo "releasing ${pkg_version}"
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # Only the highest stable tag on master may move `latest`, so
+          # republishing an older release by hand cannot roll users back and
+          # a prerelease or a stray tag off master cannot hold it back.
+          git fetch --no-tags origin master
+          newest=$(git tag -l 'v*' --merged FETCH_HEAD --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+          if [ "$TAG" = "$newest" ]; then
+            echo "is_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+          fi
 
   image:
     needs: [release-please, verify]
+    # The release environment admits only master. npm's trusted publisher
+    # names it, so a workflow edited on a side branch cannot publish to npm.
+    environment: release
     # needs on a failed release-please job would skip this even after verify
     # passed; publish whenever the release exists and verify succeeded.
     if: ${{ !cancelled() && needs.verify.result == 'success' }}
@@ -112,7 +161,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.verify.outputs.commit_sha }}
+          persist-credentials: false
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
@@ -123,29 +173,28 @@ jobs:
 
       - name: Build and push
         env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          IS_LATEST: ${{ needs.verify.outputs.is_latest }}
         run: |
           version="${TAG#v}"
           image="ghcr.io/dirkwa/signalk-espos-stream"
-          docker build -t "$image:$version" container/
+          docker build -f container/Containerfile -t "$image:$version" container/
           docker push "$image:$version"
-          # `latest` tracks stable releases only — a beta pushed as latest
-          # would reach container users who never opted into the npm
+          # `latest` tracks the newest stable release only — a beta pushed as
+          # latest would reach container users who never opted into the npm
           # prerelease channel.
-          case "$TAG" in
-            *alpha* | *beta* | *rc*)
-              echo "prerelease tag — not updating latest"
-              ;;
-            *)
-              docker tag "$image:$version" "$image:latest"
-              docker push "$image:latest"
-              ;;
-          esac
+          if [ "$IS_LATEST" = "true" ]; then
+            docker tag "$image:$version" "$image:latest"
+            docker push "$image:latest"
+          else
+            echo "not the newest stable tag — not updating latest"
+          fi
 
   publish:
     # npm publishes LAST: once the package is on the registry, every
     # install can resolve imageTag "auto" to an image that already exists.
-    needs: [release-please, image]
+    needs: [release-please, verify, image]
+    environment: release
     if: ${{ !cancelled() && needs.image.result == 'success' }}
     permissions:
       id-token: write # OIDC trusted publishing
@@ -155,7 +204,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.verify.outputs.commit_sha }}
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -170,14 +220,24 @@ jobs:
 
       - name: Publish to npm
         env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          IS_LATEST: ${{ needs.verify.outputs.is_latest }}
         run: |
+          version="${TAG#v}"
+          # A manual re-run of a release that already reached npm has
+          # nothing left to publish; npm would reject the version anyway.
+          if [ "$(npm view "signalk-espos-stream@${version}" version 2>/dev/null)" = "$version" ]; then
+            echo "${version} is already on npm"
+            exit 0
+          fi
           if [[ "$TAG" == *alpha* ]]; then
             npm publish --provenance --access public --tag alpha
           elif [[ "$TAG" == *beta* ]]; then
             npm publish --provenance --access public --tag beta
           elif [[ "$TAG" == *rc* ]]; then
             npm publish --provenance --access public --tag rc
-          else
+          elif [ "$IS_LATEST" = "true" ]; then
             npm publish --provenance --access public
+          else
+            npm publish --provenance --access public --tag previous
           fi
